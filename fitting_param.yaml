@@ -1,0 +1,10 @@
+fittings:
+  normal:
+    a: 127.3
+    b: 612.4
+  tangential:
+    a: 500.8
+    b: -9.8
+  torsional:
+    a: 8.7
+    b: 1.72
