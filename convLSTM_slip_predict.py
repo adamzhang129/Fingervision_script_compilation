@@ -1,4 +1,4 @@
-from convLSTM_slip_detection_3 import ConvLSTMCell
+from convLSTM_slip_detection_1layer import ConvLSTMCell
 
 
 import torch

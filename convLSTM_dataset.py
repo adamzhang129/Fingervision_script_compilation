@@ -47,9 +47,11 @@ class convLSTM_Dataset(Dataset):
             # data = frames.values
         else:
             target = 1
-            frames = pd.read_csv(self.class_1_files[idx-4000])
+            frames = pd.read_csv(self.class_1_files[idx-0.5*self.__len__()])
 
         data = frames.values
+
+        # print 'data size'+str(data.shape)
 
         # form a tensor (T, c, H, W)
         frame_matrix = np.zeros((data.shape[1], 3, self.Nx, self.Ny))
@@ -69,7 +71,103 @@ class convLSTM_Dataset(Dataset):
             matrix_3 = np.stack(temp, axis=0)
 
             frame_matrix[i,:,:,:] = matrix_3
-            frame_matrix = np.flip(frame_matrix, axis=0)
+
+        frame_matrix = np.flip(frame_matrix, axis=0)
+
+        # print frame_matrix.shape
+
+
+
+
+        # imgs_name = os.path.join(self.imgs_dir, self.csv_handler.iloc[idx, 0])
+        # init_img_name = self.init_img_path
+        #
+        # imgs = io.imread(imgs_name, plugin='matplotlib')
+        # init_img = io.imread(init_img_name, plugin='matplotlib')
+        #
+        # targets = self.csv_handler.iloc[idx, 1:self.n_feature+1].as_matrix()
+        # print(targets)
+        # targets = targets.astype('float').reshape(-1, 2)
+        sample = {'frames': frame_matrix, 'target': target}
+
+        if self.transform:
+            sample = self.transform(sample)
+
+        return sample
+
+
+class convLSTM_tdiff_Dataset(Dataset):
+    def __init__(self, dataset_dir, n_class, transform=None):
+        """
+            Args:
+                csv_file (string): Path to the csv file with force torque values and position of pressing.
+                init_img_path (string): path to the  init image
+                imgs_path (string): path to the image when pressing
+                transform (callable, optional): Optional transform to be applied
+                on a sample.
+        """
+        self.dataset_dir = dataset_dir
+        self.n_feature = n_class
+
+        self.transform = transform
+
+        self.class_0_dir = os.path.join(self.dataset_dir, '0')
+        self.class_1_dir = os.path.join(self.dataset_dir, '1')
+
+        self.class_0_files = glob.glob(os.path.join(self.class_0_dir, '*'))
+        self.class_1_files = glob.glob(os.path.join(self.class_1_dir, '*'))
+
+        self.Nx, self.Ny = 30, 30
+
+    def __len__(self):
+        return len(self.class_0_files) + len(self.class_1_files)
+
+    def __getitem__(self, idx):
+        feature_size = self.Nx * self.Ny
+        if idx < 0.5*self.__len__():
+            target = 0
+            frames = pd.read_csv(self.class_0_files[idx])
+            # data = frames.values
+        else:
+            target = 1
+            frames = pd.read_csv(self.class_1_files[idx-0.5*self.__len__()])
+
+        data = frames.values
+
+        # print 'data size'+str(data.shape)
+
+        # form a tensor (T, c, H, W)
+        frame_matrix = np.zeros((data.shape[1]-1, 3, self.Nx, self.Ny))
+        for i in range(1, data.shape[1]):
+            dx = data[:feature_size, i]
+            dy = data[feature_size:, i]
+            # print dx_interp.shape, dy_interp.shape
+            mag = np.sqrt(dx ** 2 + dy ** 2)
+            # ---------------------------------
+            dx_last = data[:feature_size, i - 1]
+            dy_last = data[feature_size:, i - 1]
+            mag_last = np.sqrt(dx_last**2 + dy_last**2)
+
+
+            dx_diff = dx - dx_last
+            dy_diff = dy - dy_last
+            mag_diff = mag - mag_last
+
+
+            dx_resized = dx_diff.reshape(self.Nx, self.Ny)
+            dy_resized = dy_diff.reshape(self.Nx, self.Ny)
+            mag_resized = mag_diff.reshape(self.Nx, self.Ny)
+
+            # stack them along axis 0
+            temp = [dx_resized, dy_resized, mag_resized]
+            matrix_3 = np.stack(temp, axis=0)
+
+            frame_matrix[i-1,:,:,:] = matrix_3
+
+        frame_matrix = np.flip(frame_matrix, axis=0)
+
+        # print frame_matrix.shape
+
 
 
 
@@ -131,7 +229,7 @@ class ToTensor(object):
     """Convert ndarrays in sample to Tensors."""
 
     def __call__(self, sample):
-        frames, target = sample['frames'],sample['target']
+        frames, target = sample['frames'], sample['target']
         target = np.array(target)
         # swap color axis because
         # numpy image: H x W x C
@@ -141,12 +239,12 @@ class ToTensor(object):
 
         # image = image.transpose((2, 0, 1))
         # init_image = init_image.transpose((2,0,1))
-        return {'frames': torch.from_numpy(frames),
+        return {'frames': torch.from_numpy(frames.copy()),
                 'target': torch.from_numpy(target)}
 
 
 if __name__ == '__main__':
-    convlstm_dataset = convLSTM_Dataset(dataset_dir='../dataset3/resample',
+    convlstm_dataset = convLSTM_Dataset(dataset_dir='../dataset3/resample_skipping',
                                   n_class=2,
                                 transform=transforms.Compose([
                                    ToTensor()])
@@ -155,17 +253,32 @@ if __name__ == '__main__':
     dataloader = DataLoader(convlstm_dataset, batch_size=8, shuffle=True, num_workers=4)
     print(len(convlstm_dataset))
 
-    sample = convlstm_dataset[100]
+    # sample = convlstm_dataset[100]
+    # print sample['frames']
 
-    fig = plt.figure()
+    #=====================================
+    convlstm_tdiff_dataset = convLSTM_tdiff_Dataset(dataset_dir='../dataset3/resample_skipping',
+                                                    n_class=2,
+                                                    transform=transforms.Compose([
+                                                    ToTensor()])
+                                                    )
+    dataloader_tdiff = DataLoader(convlstm_tdiff_dataset, batch_size=8, shuffle=True, num_workers=4)
+    sample_tdiff = convlstm_tdiff_dataset[100]
+    print sample_tdiff['frames'].shape
+
+
+
+    # fig = plt.figure()
 
     # for i in range(len(convlstm_dataset)):
     #     sample = convlstm_dataset[i]
     #
     #     # print(i, sample['image'].size(), sample['init_image'].size(), sample['targets'].size())
     #     print(i, sample['frames'].size(), sample['target'])
-    for i_batch, sample_batched in enumerate(dataloader):
-        print(i_batch, sample_batched['frames'].size(),
-              sample_batched['target'])
+
+
+    # for i_batch, sample_batched in enumerate(dataloader):
+    #     print(i_batch, sample_batched['frames'].size(),
+    #           sample_batched['target'])
 
 

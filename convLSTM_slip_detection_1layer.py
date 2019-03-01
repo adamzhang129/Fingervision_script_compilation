@@ -21,8 +21,14 @@ class ConvLSTMCell(nn.Module):
         self.hidden_size = hidden_size
         self.Gates = nn.Conv2d(input_size + hidden_size, 4 * hidden_size, KERNEL_SIZE, padding=PADDING)
 
+        # ker2_size = int(0.25*hidden_size)
+        # self.Conv = nn.Conv2d(hidden_size, ker2_size, KERNEL_SIZE, padding=PADDING)
+
         self.height, self.width = 30, 30
         self.linear = nn.Linear(self.hidden_size*self.height*self.width, 2)
+        self.dropout = nn.Dropout(0.3)
+
+
 
     def forward(self, input_, prev_state):
 
@@ -30,19 +36,21 @@ class ConvLSTMCell(nn.Module):
         batch_size = input_.data.size()[0]
         spatial_size = input_.data.size()[2:]
 
+        # print spatial_size
+
         # generate empty prev_state, if None is provided
         if prev_state is None:
-            state_size = [batch_size, self.hidden_size] + list(spatial_size)
+            state_size = [batch_size, self.hidden_size] + list(spatial_size)  # (B,Hidden_size, H, W)
             prev_state = (
                 Variable(torch.zeros(state_size)).type(torch.cuda.FloatTensor),
                 Variable(torch.zeros(state_size)).type(torch.cuda.FloatTensor)
-            )
+            )  # list of h[t-1] and C[t-1]: both of size [batch_size, hidden_size, D, D]
 
         prev_hidden, prev_cell = prev_state
 
         # data size is [batch, channel, height, width]
         # print input_.type(), prev_hidden.type()
-        stacked_inputs = torch.cat((input_, prev_hidden), 1)
+        stacked_inputs = torch.cat((input_, prev_hidden), 1)  # concat x[t] with h[t-1]
         gates = self.Gates(stacked_inputs)
 
         # chunk across channel dimension
@@ -55,17 +63,22 @@ class ConvLSTMCell(nn.Module):
 
         # apply tanh non linearity
         cell_gate = f.tanh(cell_gate)
+        # print cell_gate.shape
 
         # compute current cell and hidden state
         cell = (remember_gate * prev_cell) + (in_gate * cell_gate)
         hidden = out_gate * f.tanh(cell)
 
         # print hidden.size()
+        # conv2 = self.Conv(hidden)
+        # flat = conv2.view(-1, conv2.size(1) * conv2.size(2) * conv2.size(3))
+
         flat = hidden.view(-1, hidden.size(1)*hidden.size(2)*hidden.size(3))
         # print flat.size()
         out = self.linear(flat)
+        out = self.dropout(out)
 
-        return out, (hidden, cell)
+        return out,  (hidden, cell)
 
 
 
@@ -83,12 +96,12 @@ def _main():
 
     # define batch_size, channels, height, width
     batch_size, channels, height, width = 32, 3, 30, 30
-    hidden_size = 64           # hidden state size
+    hidden_size = 64 # 64           # hidden state size
     lr = 1e-5     # learning rate
-    n_frames = 10           # sequence length
-    max_epoch = 30  # number of epochs
+    n_frames = 10-1           # sequence length
+    max_epoch = 10  # number of epochs
 
-    convlstm_dataset = convLSTM_Dataset(dataset_dir='../dataset3/resample',
+    convlstm_dataset = convLSTM_tdiff_Dataset(dataset_dir='../dataset3/resample_skipping',
                                         n_class=2,
                                         transform=transforms.Compose([
                                             ToTensor()])
@@ -98,6 +111,7 @@ def _main():
     test_size = len(convlstm_dataset) - train_size
 
     train_dataset, test_dataset = random_split(convlstm_dataset, [train_size, test_size])
+
 
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size,
                             shuffle=True, num_workers=4)
@@ -123,7 +137,10 @@ def _main():
 
     print('Create a MSE criterion')
     loss_fn = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=0.01)
+
+
+
     print('Run for', max_epoch, 'iterations')
     for epoch in range(0, max_epoch):
         loss_train = 0
@@ -145,6 +162,7 @@ def _main():
 
 
             for t in range(0, n_frames):
+                # print x[t,0,0,:,:]
                 out, state = model(x[t], state)
                 # loss += loss_fn(state[0], y[t])
 
@@ -269,7 +287,7 @@ def _main():
         out_test = None
 
         for t in range(0, n_frames):
-            out_test, state_test = model(x[t], state_test)
+            out_test,  state_test = model(x[t], state_test)
 
         _, argmax_test = torch.max(out_test, 1)
 
@@ -279,7 +297,7 @@ def _main():
         break
     print 'one batch inference time:', (time.time() - start)/batch_size
     # save the trained model parameters
-    # torch.save(model.state_dict(), './saved_model/convlstm_model.pth') # arbitrary file extension
+    torch.save(model.state_dict(), './saved_model/convlstm_tdiff_model_20190227.pth') # arbitrary file extension
 
 
     print('Input size:', list(x.data.size()))
