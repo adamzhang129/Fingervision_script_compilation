@@ -188,6 +188,50 @@ class convLSTM_tdiff_Dataset(Dataset):
         return sample
 
 
+class RandomHorizontalFlip(object):
+    """Randomly flip the numpy array(as image) horizontally
+    This transform should be put before ToTensor()
+
+        input: numpy array (/or array sequence) with size of (Sequence, channel, height, width)
+        output: numpy array with same size (flipped or not depends on random number)
+    Args:
+        p: possibility of flip
+
+    """
+    def __init__(self, p=0.5):
+        self.p = p
+
+    def __call__(self, sample):
+        image_sequence, target = sample['frames'], sample['target']
+
+        if np.random.uniform() > self.p:
+            image_sequence = np.flip(image_sequence, axis=3)
+
+        return {'frames': image_sequence, 'target': target}
+
+
+class RandomVerticalFlip(object):
+    """Randomly flip the numpy array(as image) vertically
+    This transform should be put before ToTensor()
+
+        input: numpy array (/or array sequence) with size of (Sequence, channel, height, width)
+        output: numpy array with same size (flipped or not depends on random number)
+    Args:
+        p: possibility of flip
+
+    """
+    def __init__(self, p=0.5):
+        self.p = p
+
+    def __call__(self, sample):
+        image_sequence, target = sample['frames'], sample['target']
+
+        if np.random.uniform() > self.p:
+            image_sequence = np.flip(image_sequence, axis=2)
+
+        return {'frames': image_sequence, 'target': target}
+
+
 class Rescale(object):
     """Rescale the image in a sample to a given size.
 
@@ -260,7 +304,9 @@ if __name__ == '__main__':
     convlstm_tdiff_dataset = convLSTM_tdiff_Dataset(dataset_dir='../dataset3/resample_skipping',
                                                     n_class=2,
                                                     transform=transforms.Compose([
-                                                    ToTensor()])
+                                                        RandomHorizontalFlip(),
+                                                        RandomVerticalFlip(),
+                                                        ToTensor()])
                                                     )
     dataloader_tdiff = DataLoader(convlstm_tdiff_dataset, batch_size=8, shuffle=True, num_workers=4)
     sample_tdiff = convlstm_tdiff_dataset[100]
