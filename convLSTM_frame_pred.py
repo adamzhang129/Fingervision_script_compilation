@@ -131,8 +131,8 @@ from torch.utils.data import DataLoader
 
 from torch.utils.data.dataset import random_split
 
-from logger import Logger
-logger = Logger('./logs')
+# from logger import Logger
+# logger = Logger('./logs')
 
 
 import IPython
@@ -146,11 +146,13 @@ def _main():
     hidden_size = 32 # 64           # hidden state size
     lr = 1e-5     # learning rate
     n_frames = 9           # sequence length
-    max_epoch = 100  # number of epochs
+    max_epoch = 200  # number of epochs
 
     convlstm_dataset = convLSTM_Dataset(dataset_dir='../dataset3/resample_skipping',
                                         n_class=2,
                                         transform=transforms.Compose([
+                                            RandomHorizontalFlip(),
+                                            RandomVerticalFlip(),
                                             ToTensor()])
                                         )
     # convlstm_dataset = convLSTM_tdiff_Dataset(dataset_dir='../dataset3/resample_skipping',
@@ -360,7 +362,7 @@ def _main():
         break
     print 'one batch inference time:', (time.time() - start)/batch_size
     # save the trained model parameters
-    torch.save(model.state_dict(), './saved_model/convlstm_frame_predict_20190301.pth') # arbitrary file extension
+    torch.save(model.state_dict(), './saved_model/convlstm_frame_predict_20190302_200epochs_3200data_flipped.pth') # arbitrary file extension
 
 
     # print('Input size:', list(x.data.size()))
