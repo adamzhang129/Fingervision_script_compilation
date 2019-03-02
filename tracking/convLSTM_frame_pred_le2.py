@@ -15,9 +15,10 @@ class ConvLSTMCell(nn.Module):
     Generate a convolutional LSTM cell
     """
 
-    def __init__(self, input_size, hidden_size):
+    def __init__(self, input_size, hidden_size, n_frames_ahead):
         super(ConvLSTMCell, self).__init__()
         self.input_size = input_size
+        self.n_frames_ahead = n_frames_ahead
         self.hidden_size = hidden_size
         self.Gates_layer1 = nn.Conv2d(input_size + hidden_size, 4 * hidden_size, KERNEL_SIZE, padding=PADDING)
 
@@ -38,7 +39,7 @@ class ConvLSTMCell(nn.Module):
 
         self.height, self.width = 30, 30
 
-        self.Shrink = nn.Conv2d(hidden_size, 3, KERNEL_SIZE, padding=PADDING)
+        self.Shrink = nn.Conv2d(hidden_size, self.input_size*self.n_frames_ahead, KERNEL_SIZE, padding=PADDING)
 
     def forward(self, input_, prev_state):
 
@@ -121,6 +122,7 @@ class ConvLSTMCell(nn.Module):
         # out = self.dropout(out)
 
         out = self.Shrink(hidden2)
+        out = out.view(self.n_frames_ahead, self.input_size, -1)
 
         return out, ((hidden1, cell1), (hidden2, cell2))
 
@@ -145,8 +147,10 @@ def _main():
     batch_size, channels, height, width = 32, 3, 30, 30
     hidden_size = 32 # 64           # hidden state size
     lr = 1e-5     # learning rate
-    n_frames = 9           # sequence length
-    max_epoch = 200  # number of epochs
+    n_frames = 8           # sequence length
+    max_epoch = 2  # number of epochs
+
+    n_frames_ahead = 2
 
     convlstm_dataset = convLSTM_Dataset(dataset_dir='../dataset3/resample_skipping',
                                         n_class=2,
@@ -177,7 +181,7 @@ def _main():
     # torch.manual_seed(0)
 
     print('Instantiate model')
-    model = ConvLSTMCell(channels, hidden_size)
+    model = ConvLSTMCell(channels, hidden_size, n_frames_ahead)
     print(repr(model))
 
     if torch.cuda.is_available():
@@ -193,13 +197,13 @@ def _main():
     loss_fn = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=0.05)
 
-
-
     print('Run for', max_epoch, 'iterations')
     for epoch in range(0, max_epoch):
+        print 'epoch: {}'.format(epoch)
         loss_train = 0
         n_right_train = 0
         for step, sample_batched in enumerate(train_dataloader):
+            print 'step: {}'.format(step)
             frames = sample_batched['frames']
 
             # y = sample_batched['target']
@@ -208,6 +212,8 @@ def _main():
             x = frames[:n_frames]
             y = frames[n_frames:]
 
+            print frames.shape
+            IPython.embed()
             # x = x.type(torch.FloatTensor)
             # print x.size()
 
@@ -226,8 +232,8 @@ def _main():
                 # loss += loss_fn(state[0], y[t])
 
             # out = out.long()
-            y = y.squeeze()
-            IPython.embed()
+            y = y
+            # IPython.embed()
             # print out.size(), y.size()
             loss = loss_fn(out, y)
             # print(' > Epoch {:2d} loss: {:.7f}'.format((epoch+1), loss.data[0]))
@@ -329,7 +335,7 @@ def _main():
                 # # for tag, images in info.items():
                 # #     logger.image_summary(tag, images, step + 1)
 
-
+    # IPython.embed()
     import time
 
     start = time.time()
