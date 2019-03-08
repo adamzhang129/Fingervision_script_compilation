@@ -108,7 +108,10 @@ def _main():
     convlstm_dataset = convLSTM_Dataset(dataset_dir='../dataset3/resample_skipping',
                                         n_class=2,
                                         transform=transforms.Compose([
-                                            ToTensor()])
+                                            RandomHorizontalFlip(),
+                                            RandomVerticalFlip(),
+                                            ToTensor(),
+                                        ])
                                         )
     train_ratio = 0.9
     train_size = int(train_ratio*len(convlstm_dataset))
@@ -306,7 +309,7 @@ def _main():
         break
     print 'one batch inference time:', (time.time() - start)/batch_size
     # save the trained model parameters
-    torch.save(model.state_dict(), './saved_model/convlstm_tdiff_model_20190227.pth') # arbitrary file extension
+    torch.save(model.state_dict(), './saved_model/convlstm__model_1layer_augmented_20190308.pth') # arbitrary file extension
 
 
     print('Input size:', list(x.data.size()))
