@@ -24,22 +24,9 @@ class ConvLSTMCell(nn.Module):
 
         self.Gates_layer2 = nn.Conv2d(2*hidden_size, 4*hidden_size, KERNEL_SIZE, padding=PADDING)
 
-        # self.Gates_layer2 = nn.Sequential(
-        #     nn.Conv2d(4 * hidden_size, 4 * hidden_size, KERNEL_SIZE, padding=PADDING),
-        #     nn.ReLU())
-        # self.Gates_layer3 = nn.Sequential(
-        #     nn.Conv2d(4 * hidden_size, 4 * hidden_size, KERNEL_SIZE, padding=PADDING),
-        #     nn.ReLU())
-        # self.Gates_layer4 = nn.Sequential(
-        #     nn.Conv2d(4 * hidden_size, 4 * hidden_size, KERNEL_SIZE, padding=PADDING),
-        #     nn.ReLU())
-
-        # ker2_size = int(0.25 * hidden_size)
-        # self.Conv = nn.Conv2d(hidden_size, ker2_size, KERNEL_SIZE, padding=PADDING)
-
         self.height, self.width = 30, 30
 
-        self.Shrink = nn.Conv2d(hidden_size, self.input_size*self.n_frames_ahead, KERNEL_SIZE, padding=PADDING)
+        self.Shrink = nn.Conv2d(hidden_size, self.input_size, KERNEL_SIZE, padding=PADDING)
 
     def forward(self, input_, prev_state):
 
@@ -96,7 +83,8 @@ class ConvLSTMCell(nn.Module):
         # conv2 = self.Conv(hidden)
         # flat = conv2.view(-1, conv2.size(1) * conv2.size(2) * conv2.size(3))
 
-        # =============layer 2 gates operation =============
+        # =============layer 2 gates operation =================================
+
         stacked_inputs2 = torch.cat((hidden1, prev_hidden2), 1)  # concat x[t] with h[t-1]
         gates2 = self.Gates_layer2(stacked_inputs2)
 
@@ -126,9 +114,9 @@ class ConvLSTMCell(nn.Module):
         # print out.shape
 
         # print out.shape
-        out = out.view(-1, self.n_frames_ahead, self.input_size, self.height, self.width)
+        # out = out.view(-1, self.n_frames_ahead, self.input_size, self.height, self.width)
         # print out.shape
-        out = torch.transpose(out, 0, 1)
+        # out = torch.transpose(out, 0, 1)
 
         return out, ((hidden1, cell1), (hidden2, cell2))
 
@@ -209,7 +197,11 @@ def _main():
     for epoch in range(0, max_epoch):
         loss_train = 0
         n_right_train = 0
+
         for step, sample_batched in enumerate(train_dataloader):
+            model = model.train()
+            loss = 0
+
             frames = sample_batched['frames']
 
             # y = sample_batched['target']
@@ -229,17 +221,19 @@ def _main():
             state = None
             out = None
 
-
+            # IPython.embed()
             for t in range(0, n_frames):
                 # print x[t,0,0,:,:]
                 out, state = model(x[t], state)
-                # loss += loss_fn(state[0], y[t])
+                if t in range(0, n_frames)[-n_frames_ahead:]:
+                    # IPython.embed()
+                    loss += loss_fn(out, y[n_frames_ahead - (n_frames - t)])
 
             # out = out.long()
-            y = y.squeeze()
+            # y = y.squeeze()
             # IPython.embed()
             # print out.size(), y.size()
-            loss = loss_fn(out, y)
+            # loss = loss_fn(out, y)
             # print(' > Epoch {:2d} loss: {:.7f}'.format((epoch+1), loss.data[0]))
 
             # zero grad parameters
@@ -342,6 +336,8 @@ def _main():
 
     import time
 
+    model = model.eval()
+
     start = time.time()
     for test_step, test_sample_batched in enumerate(test_dataloader):
         frames = test_sample_batched['frames']
@@ -363,6 +359,7 @@ def _main():
         for t in range(0, n_frames):
             out_test, state_test = model(x[t], state_test)
 
+
         # _, argmax_test = torch.max(out_test, 1)
 
 
@@ -372,7 +369,7 @@ def _main():
         break
     print 'one batch inference time:', (time.time() - start)/batch_size
     # save the trained model parameters
-    torch.save(model.state_dict(), './saved_model/convlstm_frame_predict_20190302_200epochs_3200data_flipped_2f_ahead.pth') # arbitrary file extension
+    torch.save(model.state_dict(), './saved_model/convlstm_frame_predict_20190308_200epochs_3200data_flipped_2f_ahead.pth') # arbitrary file extension
 
 
     # print('Input size:', list(x.data.size()))
@@ -380,7 +377,7 @@ def _main():
     # print('Last hidden state size:', list(state[0].size()))\
     gt = y.squeeze()[1][0]
     gt = gt.cpu().detach().numpy()
-    out_single = out_test[1][0].cpu().detach().numpy()
+    out_single = out_test[0].cpu().detach().numpy()
 
 
 

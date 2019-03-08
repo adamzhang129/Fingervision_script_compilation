@@ -1,146 +1,69 @@
-"""
-#This script demonstrates the use of a convolutional LSTM network.
-This network is used to predict the next frame of an artificially
-generated movie which contains moving squares.
-"""
-from keras.models import Sequential
-from keras.layers.convolutional import Conv3D
-from keras.layers.convolutional_recurrent import ConvLSTM2D
-from keras.layers.normalization import BatchNormalization
 import numpy as np
-import pylab as plt
 
 import IPython
-# We create a layer which take as input movies of shape
-# (n_frames, width, height, channels) and returns a movie
-# of identical shape.
 
-seq = Sequential()
-seq.add(ConvLSTM2D(filters=40, kernel_size=(3, 3),
-                   input_shape=(None, 40, 40, 1),
-                   padding='same', return_sequences=True))
-seq.add(BatchNormalization())
+# transition model and observation model
+A = np.array([[0.2, 0.8, 0], [0., 0.2, 0.8], [0, 0., 1]])
+O = np.array([[0.8, 0.2, 0], [0.1, 0.8, 0.1], [0.0, 0.2, 0.8]])
+# O = O.transpose()
 
-seq.add(ConvLSTM2D(filters=40, kernel_size=(3, 3),
-                   padding='same', return_sequences=True))
-seq.add(BatchNormalization())
+# initial setup
+pi = np.array([1, 0, 0])
+pi = np.transpose(pi)
 
-seq.add(ConvLSTM2D(filters=40, kernel_size=(3, 3),
-                   padding='same', return_sequences=True))
-seq.add(BatchNormalization())
+# sequence
+S = [1, 0, 1, 2]
 
-seq.add(ConvLSTM2D(filters=40, kernel_size=(3, 3),
-                   padding='same', return_sequences=True))
-seq.add(BatchNormalization())
+# target: argmax P{{Zi} | pi, A, O, S}
+#            Xi
 
-seq.add(Conv3D(filters=1, kernel_size=(3, 3, 3),
-               activation='sigmoid',
-               padding='same', data_format='channels_last'))  #  reduce feature map size to one to recover image prediction
-seq.compile(loss='binary_crossentropy', optimizer='adadelta')
+bt = []
 
+for step, s in enumerate(S[1:]):
+    # for every state, find the most possible ancestor by max func
+    temp = []
+    bt_row = []
+    for i in range(len(pi)):
+        a = A[:, i] # the array of possible states to i state probability
+        temp.append(np.max(pi*a))
+        bt_row.append(np.argmax(pi*a))
+        # print bt_row
 
-# Artificial data generation:
-# Generate movies with 3 to 7 moving squares inside.
-# The squares are of shape 1x1 or 2x2 pixels,
-# which move linearly over time.
-# For convenience we first create movies with bigger width and height (80x80)
-# and at the end we select a 40x40 window.
+    pi = temp
+    print 'step {}: the predicted state based on transition:\n {}'.format(step, pi)
 
-def generate_movies(n_samples=1200, n_frames=15):
-    row = 80
-    col = 80
-    noisy_movies = np.zeros((n_samples, n_frames, row, col, 1), dtype=np.float)
-    shifted_movies = np.zeros((n_samples, n_frames, row, col, 1),
-                              dtype=np.float)
+    # P{X_k|O_k} = P{O_k = s|X_k}P{X_k}   and P{X_k} = pi
+    print 'observation:'+str(s)
+    ita = 0
+    for i in range(len(pi)):
+        pi[i] = O[i, s]*pi[i]
+        # print O[i, s]
+        ita += pi[i]
 
-    for i in range(n_samples):
-        # Add 3 to 7 moving squares
-        n = np.random.randint(3, 8)
+    pi = pi/ita
+    print 'step {}: the predicted state updated with observation:\n {}'.format(step, pi)
+    # print bt_row
 
-        for j in range(n):
-            # Initial position
-            xstart = np.random.randint(20, 60)
-            ystart = np.random.randint(20, 60)
-            # Direction of motion -1, 0, 1
-            directionx = np.random.randint(0, 3) - 1
-            directiony = np.random.randint(0, 3) - 1
-
-            # Size of the square
-            w = np.random.randint(2, 4)
-
-            for t in range(n_frames):
-                x_shift = xstart + directionx * t
-                y_shift = ystart + directiony * t
-                noisy_movies[i, t, x_shift - w: x_shift + w,
-                             y_shift - w: y_shift + w, 0] += 1
-
-                # Make it more robust by adding noise.
-                # The idea is that if during inference,
-                # the value of the pixel is not exactly one,
-                # we need to train the network to be robust and still
-                # consider it as a pixel belonging to a square.
-                if np.random.randint(0, 2):
-                    noise_f = (-1)**np.random.randint(0, 2)  ## amount of -1 or 1
-                    noisy_movies[i, t,
-                                 x_shift - w - 1: x_shift + w + 1,
-                                 y_shift - w - 1: y_shift + w + 1,
-                                 0] += noise_f * 0.1  # make the object block vibrate and edge blurry
-
-                # Shift the ground truth by 1 (one step ahead as prediction ground truth)
-                x_shift = xstart + directionx * (t + 1)
-                y_shift = ystart + directiony * (t + 1)
-                shifted_movies[i, t, x_shift - w: x_shift + w,
-                               y_shift - w: y_shift + w, 0] += 1
-
-    # Cut to a 40x40 window
+    bt.append(bt_row)
     # IPython.embed()
-    noisy_movies = noisy_movies[::, ::, 20:60, 20:60, ::]
-    shifted_movies = shifted_movies[::, ::, 20:60, 20:60, ::]
-    noisy_movies[noisy_movies >= 1] = 1
-    shifted_movies[shifted_movies >= 1] = 1
-    return noisy_movies, shifted_movies
+    print '===================================================='
 
-# Train the network
-noisy_movies, shifted_movies = generate_movies(n_samples=1200)
+# IPython.embed()
 
-print noisy_movies[100].shape
-seq.fit(noisy_movies[:1000], shifted_movies[:1000], batch_size=10,
-        epochs=300, validation_split=0.05)
+print 'backtracing matrix:\n {}'.format(bt)
 
-# Testing the network on one movie
-# feed it with the first 7 positions and then
-# predict the new positions
-which = 1004
-track = noisy_movies[which][:7, ::, ::, ::]
-
-for j in range(16):
-    new_pos = seq.predict(track[np.newaxis, ::, ::, ::, ::])
-    new = new_pos[::, -1, ::, ::, ::]
-    track = np.concatenate((track, new), axis=0)
+# backtracing
+print '----------------------------------------------'
+print 'start to backtrace from the max at terminal...'
+Ind_T = np.argmax(pi)
+ind = Ind_T
+print 'the state at termination is: {}'.format(ind)
 
 
-# And then compare the predictions
-# to the ground truth
-track2 = noisy_movies[which][::, ::, ::, ::]
-for i in range(15):
-    fig = plt.figure(figsize=(10, 5))
+# IPython.embed()
 
-    ax = fig.add_subplot(121)
+for j in np.flip(range(len(bt))):
+    print 'step {}:'.format(j)
+    print 'the state backwards are: {}'.format(bt[j][ind])
+    ind = bt[j][ind]
 
-    if i >= 7:
-        ax.text(1, 3, 'Predictions !', fontsize=20, color='w')
-    else:
-        ax.text(1, 3, 'Initial trajectory', fontsize=20)
-
-    toplot = track[i, ::, ::, 0]
-
-    plt.imshow(toplot)
-    ax = fig.add_subplot(122)
-    plt.text(1, 3, 'Ground truth', fontsize=20)
-
-    toplot = track2[i, ::, ::, 0]
-    if i >= 2:
-        toplot = shifted_movies[which][i - 1, ::, ::, 0]
-
-    plt.imshow(toplot)
-    plt.savefig('%i_animate.png' % (i + 1))

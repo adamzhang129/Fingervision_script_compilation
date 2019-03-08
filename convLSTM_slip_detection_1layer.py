@@ -25,9 +25,12 @@ class ConvLSTMCell(nn.Module):
         # self.Conv = nn.Conv2d(hidden_size, ker2_size, KERNEL_SIZE, padding=PADDING)
 
         self.height, self.width = 30, 30
-        self.linear = nn.Linear(self.hidden_size*self.height*self.width, 2)
-        self.dropout = nn.Dropout(0.3)
+        self.linear1 = nn.Linear(self.hidden_size*self.height*self.width, 256)
+        self.dropout = nn.Dropout(0.5)
+        self.linear2 = nn.Linear(256, 2)
 
+
+        # self.softmax = nn.Softmax()
 
 
     def forward(self, input_, prev_state):
@@ -75,8 +78,9 @@ class ConvLSTMCell(nn.Module):
 
         flat = hidden.view(-1, hidden.size(1)*hidden.size(2)*hidden.size(3))
         # print flat.size()
-        out = self.linear(flat)
+        out = self.linear1(flat)
         out = self.dropout(out)
+        out = self.linear2(out)
 
         return out,  (hidden, cell)
 
@@ -98,10 +102,10 @@ def _main():
     batch_size, channels, height, width = 32, 3, 30, 30
     hidden_size = 64 # 64           # hidden state size
     lr = 1e-5     # learning rate
-    n_frames = 10-1           # sequence length
-    max_epoch = 10  # number of epochs
+    n_frames = 10           # sequence length
+    max_epoch = 30  # number of epochs
 
-    convlstm_dataset = convLSTM_tdiff_Dataset(dataset_dir='../dataset3/resample_skipping',
+    convlstm_dataset = convLSTM_Dataset(dataset_dir='../dataset3/resample_skipping',
                                         n_class=2,
                                         transform=transforms.Compose([
                                             ToTensor()])
@@ -146,11 +150,14 @@ def _main():
         loss_train = 0
         n_right_train = 0
         for step, sample_batched in enumerate(train_dataloader):
+
+            model = model.train()
+
             x = sample_batched['frames']
             y = sample_batched['target']
             x = torch.transpose(x, 0, 1)  # transpose time sequence and batch (N, batch, channel, height, width)
             # x = x.type(torch.FloatTensor)
-            print x.size()
+            # print x.size()
 
             if torch.cuda.is_available():
                 # print 'sending input and target to GPU'
@@ -206,6 +213,8 @@ def _main():
                 # ================================================================== #
                 #                        Tensorboard Logging                         #
                 # ================================================================== #
+
+                model = model.eval()
 
                 test_loss = 0
                 n_right = 0
