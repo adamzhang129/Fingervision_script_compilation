@@ -20,8 +20,8 @@ class ConvLSTMChained(nn.Module):
         self.n_frames_ahead = n_frames_ahead
         self.n_frames = n_frames
 
-        self.pred_net = convLSTMPred(3, 64, 2)
-        self.detect_net = convLSTMDetect(3, 64)
+        self.pred_net = convLSTMPred(3, 32, 2)
+        self.detect_net = convLSTMDetect(3, 32)
 
         self.output_list = {'pred': [], 'detect': []}
 
@@ -29,7 +29,7 @@ class ConvLSTMChained(nn.Module):
         prev_p = prev['pred']
         prev_d = prev['detect']
         if t < self.n_frames - self.n_frames_ahead:
-
+            # print '[INFO] forwarding: time frame {}'.format(t)
             out_p, prev_p = self.pred_net(input, prev_p)
             out_d, prev_d = self.detect_net(input, prev_d)
 
@@ -37,6 +37,8 @@ class ConvLSTMChained(nn.Module):
 
             self.output_list['pred'].append(out_p)
             self.output_list['detect'].append(out_d)
+
+            # print 'prev state size {}'.format(len(prev['pred']))
 
         else:
 
@@ -251,6 +253,8 @@ def _main():
 
     start = time.time()
     for test_step, test_sample_batched in enumerate(test_dataloader):
+        model.output_list = {'pred': [], 'detect': []}
+
         x = test_sample_batched['frames']
         y = test_sample_batched['target']
         x = torch.transpose(x, 0, 1)
@@ -279,7 +283,7 @@ def _main():
     test_loss_reduced = test_loss / test_size
     test_accuracy = float(n_right) / test_size
 
-    print ('[ TEST set] Epoch {}, Step {}, Loss: {:.6f}, Acc: {:.4f}'
+    print ('[ TEST set] Step {}, Loss: {:.6f}, Acc: {:.4f}'
                                .format(test_step + 1, test_loss_reduced, test_accuracy))
 
 

@@ -103,7 +103,7 @@ def _main():
     hidden_size = 64 # 64           # hidden state size
     lr = 1e-5     # learning rate
     n_frames = 10           # sequence length
-    max_epoch = 30  # number of epochs
+    max_epoch = 50  # number of epochs
 
     convlstm_dataset = convLSTM_Dataset(dataset_dir='../dataset3/resample_skipping',
                                         n_class=2,
