@@ -13,6 +13,8 @@ from torch.utils.data import DataLoader
 from torch.utils.data.dataset import random_split
 
 
+import IPython
+
 class ConvLSTMChained(nn.Module):
 
     def __init__(self, n_frames_ahead=2, n_frames=10):
@@ -49,9 +51,19 @@ class ConvLSTMChained(nn.Module):
         return out_d, prev
 
 
+def load_state_dict(model, path_list):
 
+    model_dict = model.state_dict()
+    for path in path_list:
+        pretrained_dict = torch.load(path)
 
-import IPython
+        # 1. filter out unnecessary keys
+        pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+        # 2. overwrite entries in the existing state dict
+        model_dict.update(pretrained_dict)
+        # 3. load the new state dict
+        model.load_state_dict(model_dict)
+
 
 
 def _main():
@@ -94,7 +106,17 @@ def _main():
     model = ConvLSTMChained(n_frames_ahead=2, n_frames=10)
     print(repr(model))
 
+    print model.state_dict()
 
+    # load pretrained_model_diction
+    path_pred = './saved_model/convlstm_frame_predict_20190308_200epochs_3200data_flipped_2f_ahead.pth'
+    path_detect = './saved_model/convlstm__model_1layer_augmented_20190308.pth'
+
+    path_list = [path_pred, path_detect]
+
+    load_state_dict(model, path_list)
+    
+    IPython.embed()
 
     if torch.cuda.is_available():
         # print 'sending model to GPU'
@@ -109,7 +131,7 @@ def _main():
     loss_fn = nn.CrossEntropyLoss()
     # optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=0.01)
 
-    # IPython.embed()
+    IPython.embed()
 
     # print('Run for', max_epoch, 'iterations')
     # for epoch in range(0, max_epoch):
