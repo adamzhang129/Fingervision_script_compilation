@@ -23,7 +23,7 @@ class ConvLSTMChained(nn.Module):
         self.n_frames = n_frames
 
         self.pred_net = convLSTMPred(3, 32, 2)
-        self.detect_net = convLSTMDetect(3, 32)
+        self.detect_net = convLSTMDetect(3, 64)
 
         self.output_list = {'pred': [], 'detect': []}
 
@@ -54,15 +54,23 @@ class ConvLSTMChained(nn.Module):
 def load_state_dict(model, path_list):
 
     model_dict = model.state_dict()
-    for path in path_list:
+    for key, value in model_dict.iteritems():
+        print key
+
+    for type_key, path in path_list.iteritems():
+        print '-----------------------------'
         pretrained_dict = torch.load(path)
+        for key, value in pretrained_dict.iteritems():
+            print key
 
         # 1. filter out unnecessary keys
-        pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+        pretrained_dict = {(type_key + '.' + k): v for k, v in pretrained_dict.items() if (type_key + '.' + k) in model_dict}
         # 2. overwrite entries in the existing state dict
         model_dict.update(pretrained_dict)
         # 3. load the new state dict
         model.load_state_dict(model_dict)
+
+        print '-----------------------------'
 
 
 
@@ -112,11 +120,11 @@ def _main():
     path_pred = './saved_model/convlstm_frame_predict_20190308_200epochs_3200data_flipped_2f_ahead.pth'
     path_detect = './saved_model/convlstm__model_1layer_augmented_20190308.pth'
 
-    path_list = [path_pred, path_detect]
+    path_dict = {'pred_net': path_pred, 'detect_net': path_detect}
 
-    load_state_dict(model, path_list)
+    load_state_dict(model, path_dict)
     
-    IPython.embed()
+    # IPython.embed()
 
     if torch.cuda.is_available():
         # print 'sending model to GPU'
@@ -131,7 +139,7 @@ def _main():
     loss_fn = nn.CrossEntropyLoss()
     # optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=0.01)
 
-    IPython.embed()
+    # IPython.embed()
 
     # print('Run for', max_epoch, 'iterations')
     # for epoch in range(0, max_epoch):
