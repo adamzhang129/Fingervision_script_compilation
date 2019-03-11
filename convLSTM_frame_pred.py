@@ -84,7 +84,7 @@ class ConvLSTMCell(nn.Module):
         # flat = conv2.view(-1, conv2.size(1) * conv2.size(2) * conv2.size(3))
 
         # =============layer 2 gates operation =================================
-
+        # feed hidden state from layer 1 to layer 2 as input
         stacked_inputs2 = torch.cat((hidden1, prev_hidden2), 1)  # concat x[t] with h[t-1]
         gates2 = self.Gates_layer2(stacked_inputs2)
 
@@ -130,8 +130,34 @@ from torch.utils.data.dataset import random_split
 # from logger import Logger
 # logger = Logger('./logs')
 
-
 import IPython
+
+from torch.utils.data.sampler import SubsetRandomSampler
+
+
+def random_split(dataset, train_ratio=0.9, shuffle_dataset=True):
+    random_seed = 41
+    # Creating data indices for training and validation splits:
+    dataset_size = len(dataset)
+    indices = list(range(dataset_size))
+    # print indices
+    split = int(np.floor(train_ratio * dataset_size))
+    # print split
+    if shuffle_dataset:
+        np.random.seed(random_seed)
+        np.random.shuffle(indices)
+    # print indices[0:10]
+    train_indices, test_indices = indices[:split], indices[split:]
+
+    # Creating PT data samplers and loaders:
+    train_sampler = SubsetRandomSampler(train_indices)
+    test_sampler = SubsetRandomSampler(test_indices)
+
+    return train_sampler, test_sampler
+
+
+import time
+
 def _main():
     """
     Run some basic tests on the API
@@ -141,10 +167,11 @@ def _main():
     batch_size, channels, height, width = 32, 3, 30, 30
     hidden_size = 32 # 64           # hidden state size
     lr = 1e-5     # learning rate
-    n_frames = 8           # sequence length
-    max_epoch = 200  # number of epochs
-
-    n_frames_ahead = 10 - n_frames
+    max_epoch = 1  # number of epochs
+    # n_frames = 8     # sequence length
+    #
+    #
+    # n_frames_ahead = 10 - n_frames
 
     convlstm_dataset = convLSTM_Dataset(dataset_dir='../dataset3/resample_skipping',
                                         n_class=2,
@@ -158,231 +185,157 @@ def _main():
     #                                           transform=transforms.Compose([
     #                                               ToTensor()])
     #                                           )
-    train_ratio = 0.9
-    train_size = int(train_ratio*len(convlstm_dataset))
-    test_size = len(convlstm_dataset) - train_size
+    # train_ratio = 0.9
+    # train_size = int(train_ratio*len(convlstm_dataset))
+    # test_size = len(convlstm_dataset) - train_size
+    #
+    # train_dataset, test_dataset = random_split(convlstm_dataset, [train_size, test_size])
 
-    train_dataset, test_dataset = random_split(convlstm_dataset, [train_size, test_size])
+    train_sampler, test_sampler = random_split(convlstm_dataset, train_ratio=0.9)
 
-
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size,
-                            shuffle=True, num_workers=4)
-
-    test_dataloader = DataLoader(test_dataset, batch_size=batch_size,
-                                  shuffle=True, num_workers=4)
-
+    train_dataloader = DataLoader(convlstm_dataset, batch_size=batch_size, sampler=train_sampler,
+                                  num_workers=4)
+    test_dataloader = DataLoader(convlstm_dataset, batch_size=batch_size, sampler=test_sampler,
+                                 num_workers=4)
+    # IPython.embed()
     # set manual seed
     # torch.manual_seed(0)
 
-    print('Instantiate model')
-    model = ConvLSTMCell(channels, hidden_size, n_frames_ahead)
-    print(repr(model))
+    # train with different values of n_frames_ahead to see the performance
+    for n_frames_ahead in range(1, 6):
+        n_frames = 10 - n_frames_ahead
 
-    if torch.cuda.is_available():
-        # print 'sending model to GPU'
-        model = model.cuda()
+        print '[Train with n_frames_ahead = {}]'.format(n_frames_ahead)
+        print('Instantiate model')
+        model = ConvLSTMCell(channels, hidden_size, n_frames_ahead)
+        print(repr(model))
 
-    print('Create input and target Variables')
-    x = Variable(torch.rand(n_frames, batch_size, channels, height, width))
-    # y = Variable(torch.randn(T, b, d, h, w))
-    y = Variable(torch.rand(batch_size))
+        if torch.cuda.is_available():
+            # print 'sending model to GPU'
+            model = model.cuda()
 
-    print('Create a MSE criterion')
-    loss_fn = nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=0.05)
+        print('Create input and target Variables')
+        x = Variable(torch.rand(n_frames, batch_size, channels, height, width))
+        # y = Variable(torch.randn(T, b, d, h, w))
+        y = Variable(torch.rand(batch_size))
+
+        print('Create a MSE criterion')
+        loss_fn = nn.MSELoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=0.05)
+
+        model.train()
+
+        # -----------------------------------------------------------
+        print('Start the training, Running for', max_epoch, 'epochs')
+        for epoch in range(0, max_epoch):
+            loss_train = 0
+            n_right_train = 0
+
+            for step, sample_batched in enumerate(train_dataloader):
+                model = model.train()
+                loss = 0
+
+                frames = sample_batched['frames']
+
+                # y = sample_batched['target']
+                # transpose time sequence and batch (sequence, batch, channel, height, width)
+                frames = torch.transpose(frames, 0, 1)
+
+                x = frames[:n_frames]
+                y = frames[n_frames:]
+                # IPython.embed()
+                # x = x.type(torch.FloatTensor)
+                # print x.size()
+
+                if torch.cuda.is_available():
+                    # print 'sending input and target to GPU'
+                    x = x.type(torch.cuda.FloatTensor)
+                    y = y.type(torch.cuda.FloatTensor)
+
+                state = None
+                out = None
+
+                # IPython.embed()
+                for t in range(0, n_frames):
+                    # print x[t,0,0,:,:]
+                    out, state = model(x[t], state)
+                    if t in range(0, n_frames)[-n_frames_ahead:]:
+                        # IPython.embed()
+                        loss += loss_fn(out, y[n_frames_ahead - (n_frames - t)])
+
+                # reduce loss to be loss on single frame discrepancy/loss
+
+                # zero grad parameters
+                model.zero_grad()
+
+                # compute new grad parameters through time!
+                loss.backward()
+                optimizer.step()
+
+                loss_train += loss.item() * batch_size / n_frames_ahead
+
+
+                Step = 20
+                if (step + 1) % Step == 0:
+                    loss_train_reduced = loss_train / (Step * batch_size)
+                    loss_train = 0.
+                    print '=================================================================='
+                    print ('[TRAIN set] Epoch {}, Step {}, Average Loss (every 20 steps): {:.6f}'
+                           .format(epoch, step + 1, loss_train_reduced))
+
+
+        model_path = './saved_model/convlstm_frame_predict_20190311_200epochs_3200data_flipped_{}f_ahead.pth'\
+            .format(n_frames_ahead)
+        # torch.save(model.state_dict(), model_path)
 
 
 
-    print('Run for', max_epoch, 'iterations')
-    for epoch in range(0, max_epoch):
-        loss_train = 0
-        n_right_train = 0
 
-        for step, sample_batched in enumerate(train_dataloader):
-            model = model.train()
-            loss = 0
+        print 'Starting the evaluation over test set.....'
+        model = model.eval()
 
-            frames = sample_batched['frames']
+        start = time.time()
+        loss_test = 0
+        for test_step, test_sample_batched in enumerate(test_dataloader):
+            loss = 0.
 
-            # y = sample_batched['target']
-            frames = torch.transpose(frames, 0, 1)  # transpose time sequence and batch (sequence, batch, channel, height, width)
-
+            frames = test_sample_batched['frames']
+            # y = test_sample_batched['target']
+            frames = torch.transpose(frames, 0, 1)
+            # x = x.type(torch.FloatTensor)
             x = frames[:n_frames]
             y = frames[n_frames:]
             # IPython.embed()
-            # x = x.type(torch.FloatTensor)
-            # print x.size()
 
             if torch.cuda.is_available():
                 # print 'sending input and target to GPU'
                 x = x.type(torch.cuda.FloatTensor)
                 y = y.type(torch.cuda.FloatTensor)
 
-            state = None
-            out = None
+            state_test = None
+            out_test = None
 
-            # IPython.embed()
             for t in range(0, n_frames):
-                # print x[t,0,0,:,:]
-                out, state = model(x[t], state)
+                out_test, state_test = model(x[t], state_test)
                 if t in range(0, n_frames)[-n_frames_ahead:]:
                     # IPython.embed()
-                    loss += loss_fn(out, y[n_frames_ahead - (n_frames - t)])
+                    loss += loss_fn(out_test, y[n_frames_ahead - (n_frames - t)])
 
-            # out = out.long()
-            # y = y.squeeze()
-            # IPython.embed()
-            # print out.size(), y.size()
-            # loss = loss_fn(out, y)
-            # print(' > Epoch {:2d} loss: {:.7f}'.format((epoch+1), loss.data[0]))
+            loss_test += loss.item() * batch_size / n_frames_ahead
 
-            # zero grad parameters
-            model.zero_grad()
+        # ---------------------------------
+        loss_test_reduced = loss_test / len(test_sampler)
+        print ('[TEST set] Average Loss (over all set): {:.6f}'
+               .format(loss_test_reduced))
 
-            # compute new grad parameters through time!
-            loss.backward()
-            optimizer.step()
-            # learning_rate step against the gradient
-            # optimizer.step()
-            #  for p in model.parameters():
-            #     p.data.sub_(p.grad.data * lr)
-
-
-            loss_train += loss.item()*batch_size
-            # Compute accuracy
-
-            # _, argmax = torch.max(out, 1)
-            # # print y, argmax.squeeze()
-            # # accuracy = (y == argmax.squeeze()).float().mean() # accuracy in each batch
-            # n_right_train += sum(y == argmax.squeeze()).item()
-
-            Step = 20
-            if (step + 1) % Step == 0:
-                loss_train_reduced = loss_train / (Step*batch_size)
-                # train_accuracy = float(n_right_train) / (50*batch_size)
-                loss_train = 0
-                n_right_train = 0
-                print '=================================================================='
-                print ('[TRAIN set] Epoch {}, Step {}, Loss: {:.6f}'
-                       .format(epoch, step + 1, loss_train_reduced))
+        gt = y.squeeze()[1][0]
+        gt = gt.cpu().detach().numpy()
+        out_single = out_test[0].cpu().detach().numpy()
 
 
 
-                # ================================================================== #
-                #                        Tensorboard Logging                         #
-                # ================================================================== #
-
-                # test_loss = 0
-                # n_right = 0
-                # for test_step, test_sample_batched in enumerate(test_dataloader):
-                #     x = test_sample_batched['frames']
-                #     y = test_sample_batched['target']
-                #     x = torch.transpose(x, 0, 1)
-                #     # x = x.type(torch.FloatTensor)
-                #
-                #     if torch.cuda.is_available():
-                #         # print 'sending input and target to GPU'
-                #         x = x.type(torch.cuda.FloatTensor)
-                #         y = y.type(torch.cuda.FloatTensor)
-                #
-                #     state_test = None
-                #     out_test = None
-                #
-                #     for t in range(0, n_frames):
-                #         out_test, state_test = model(x[t], state_test)
-                #         # loss += loss_fn(state[0], y[t])
-                #
-                #     # out = out.long()
-                #     y = y.long()
-                #
-                #     # print out.size(), y.size()
-                #     test_loss += loss_fn(out_test, y).item() * batch_size
-                #
-                #     # Compute accuracy
-                #     _, argmax_test = torch.max(out_test, 1)
-                #     # print argmax_test
-                #     # print y
-                #     n_right += sum(y == argmax_test.squeeze()).item()
-                #
-                # # print n_right
-                # test_loss_reduced = test_loss/test_size
-                # test_accuracy = float(n_right)/test_size
-                #
-                #
-                #
-                #
-                # # print test_accuracy
-                # print ('[ TEST set] Epoch {}, Step {}, Loss: {:.6f}, Acc: {:.4f}'
-                #        .format(epoch, step + 1, test_loss_reduced, test_accuracy))
-                # # 1. Log scalar values (scalar summary)
-                # info = {'loss': loss_train_reduced, 'accuracy': train_accuracy,
-                #         'test_loss': test_loss_reduced, 'test_accuracy': test_accuracy}
-                #
-                # for tag, value in info.items():
-                #     logger.scalar_summary(tag, value, epoch*(train_size/batch_size) + (step + 1))
-                #
-                # # 2. Log values and gradients of the parameters (histogram summary)
-                # for tag, value in model.named_parameters():
-                #     tag = tag.replace('.', '/')
-                #     logger.histo_summary(tag, value.data.cpu().numpy(), epoch*(train_size/batch_size) + (step + 1))
-                #     logger.histo_summary(tag + '/grad', value.grad.data.cpu().numpy(), epoch*(train_size/batch_size) + (step + 1))
-                #
-                # # 3. Log training images (image summary)
-                # # info = {'images': images.view(-1, 28, 28)[:10].cpu().numpy()}
-                #
-                # # for tag, images in info.items():
-                # #     logger.image_summary(tag, images, step + 1)
-
-
-    import time
-
-    model = model.eval()
-
-    start = time.time()
-    for test_step, test_sample_batched in enumerate(test_dataloader):
-        frames = test_sample_batched['frames']
-        # y = test_sample_batched['target']
-        frames = torch.transpose(frames, 0, 1)
-        # x = x.type(torch.FloatTensor)
-        x = frames[:n_frames]
-        y = frames[n_frames:]
         # IPython.embed()
-
-        if torch.cuda.is_available():
-            # print 'sending input and target to GPU'
-            x = x.type(torch.cuda.FloatTensor)
-            y = y.type(torch.cuda.FloatTensor)
-
-        state_test = None
-        out_test = None
-
-        for t in range(0, n_frames):
-            out_test, state_test = model(x[t], state_test)
-
-
-        # _, argmax_test = torch.max(out_test, 1)
-
-
-        # print 'show a batch in test set:'
-        # print y.squeeze()
-        # print out_test
-        break
-    print 'one batch inference time:', (time.time() - start)/batch_size
-    # save the trained model parameters
-    torch.save(model.state_dict(), './saved_model/convlstm_frame_predict_20190308_200epochs_3200data_flipped_2f_ahead.pth') # arbitrary file extension
-
-
-    # print('Input size:', list(x.data.size()))
-    # print('Target size:', list(y.data.size()))
-    # print('Last hidden state size:', list(state[0].size()))\
-    gt = y.squeeze()[1][0]
-    gt = gt.cpu().detach().numpy()
-    out_single = out_test[0].cpu().detach().numpy()
-
-
-
-    # IPython.embed()
-    show_two_img(gt, out_single)
+        show_two_img(gt, out_single)
 
 
 def show_two_img(a, b):
@@ -405,6 +358,10 @@ def show_two_img(a, b):
         plt.axis('off')
 
     plt.show()
+
+
+
+
 
 
 if __name__ == '__main__':
