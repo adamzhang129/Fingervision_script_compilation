@@ -162,12 +162,11 @@ def _main():
     """
     Run some basic tests on the API
     """
-
     # define batch_size, channels, height, width
     batch_size, channels, height, width = 32, 3, 30, 30
     hidden_size = 32 # 64           # hidden state size
     lr = 1e-5     # learning rate
-    max_epoch = 1  # number of epochs
+    max_epoch = 200  # number of epochs
     # n_frames = 8     # sequence length
     #
     #
@@ -201,11 +200,15 @@ def _main():
     # set manual seed
     # torch.manual_seed(0)
 
+
+    train_loss_cache = []
+    test_loss_cache = []
+
     # train with different values of n_frames_ahead to see the performance
     for n_frames_ahead in range(1, 6):
         n_frames = 10 - n_frames_ahead
 
-        print '[Train with n_frames_ahead = {}]'.format(n_frames_ahead)
+        print '\n =============[Train with n_frames_ahead = {} ================]'.format(n_frames_ahead)
         print('Instantiate model')
         model = ConvLSTMCell(channels, hidden_size, n_frames_ahead)
         print(repr(model))
@@ -279,19 +282,19 @@ def _main():
                 if (step + 1) % Step == 0:
                     loss_train_reduced = loss_train / (Step * batch_size)
                     loss_train = 0.
-                    print '=================================================================='
-                    print ('[TRAIN set] Epoch {}, Step {}, Average Loss (every 20 steps): {:.6f}'
+                    print '         =================================================================='
+                    print ('        [TRAIN set] Epoch {}, Step {}, Average Loss (every 20 steps): {:.6f}'
                            .format(epoch, step + 1, loss_train_reduced))
 
 
         model_path = './saved_model/convlstm_frame_predict_20190311_200epochs_3200data_flipped_{}f_ahead.pth'\
             .format(n_frames_ahead)
-        # torch.save(model.state_dict(), model_path)
+        torch.save(model.state_dict(), model_path)
+
+        train_loss_cache.append(loss_train_reduced)
 
 
-
-
-        print 'Starting the evaluation over test set.....'
+        print '     Starting the evaluation over test set.....'
         model = model.eval()
 
         start = time.time()
@@ -325,17 +328,30 @@ def _main():
 
         # ---------------------------------
         loss_test_reduced = loss_test / len(test_sampler)
-        print ('[TEST set] Average Loss (over all set): {:.6f}'
+        print ('        [TEST set] Average Loss (over all set): {:.6f}'
                .format(loss_test_reduced))
 
         gt = y.squeeze()[1][0]
         gt = gt.cpu().detach().numpy()
         out_single = out_test[0].cpu().detach().numpy()
 
-
+        test_loss_cache.append(loss_test_reduced)
 
         # IPython.embed()
-        show_two_img(gt, out_single)
+        # show_two_img(gt, out_single)
+
+    # plot loss vs n_frames_ahead
+    import matplotlib.pyplot as plt
+
+    train_loss_cache = np.array(train_loss_cache)
+    test_loss_cache = np.array(test_loss_cache)
+
+    plt.figure()
+    xaxis = range(1, 6)
+    plt.plot(xaxis, train_loss_cache, 'r')
+    # plt.hold()
+    plt.plot(xaxis, test_loss_cache, 'b')
+    plt.show()
 
 
 def show_two_img(a, b):

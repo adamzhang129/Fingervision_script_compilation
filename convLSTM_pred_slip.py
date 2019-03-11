@@ -55,14 +55,14 @@ class ConvLSTMChained(nn.Module):
 def load_state_dict(model, path_list):
 
     model_dict = model.state_dict()
-    for key, value in model_dict.iteritems():
-        print key
+    # for key, value in model_dict.iteritems():
+    #     print key
 
     for type_key, path in path_list.iteritems():
-        print '-----------------------------'
+        # print '-----------------------------'
         pretrained_dict = torch.load(path)
-        for key, value in pretrained_dict.iteritems():
-            print key
+        # for key, value in pretrained_dict.iteritems():
+        #     print key
 
         # 1. filter out unnecessary keys
         pretrained_dict = {(type_key + '.' + k): v for k, v in pretrained_dict.items() if (type_key + '.' + k) in model_dict}
@@ -71,7 +71,7 @@ def load_state_dict(model, path_list):
         # 3. load the new state dict
         model.load_state_dict(model_dict)
 
-        print '-----------------------------'
+        # print '-----------------------------'
 
 
 
@@ -115,7 +115,7 @@ def _main():
     model = ConvLSTMChained(n_frames_ahead=2, n_frames=10)
     print(repr(model))
 
-    print model.state_dict()
+    # print model.state_dict()
 
     # load pretrained_model_diction
     path_pred = './saved_model/convlstm_frame_predict_20190308_200epochs_3200data_flipped_2f_ahead.pth'

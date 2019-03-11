@@ -47,7 +47,8 @@ class convLSTM_Dataset(Dataset):
             # data = frames.values
         else:
             target = 1
-            frames = pd.read_csv(self.class_1_files[idx-0.5*self.__len__()])
+            # print int(idx-0.5*self.__len__())
+            frames = pd.read_csv(self.class_1_files[int(idx-0.5*self.__len__())])
 
         data = frames.values
 
