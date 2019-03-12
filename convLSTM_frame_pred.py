@@ -135,7 +135,7 @@ import IPython
 from torch.utils.data.sampler import SubsetRandomSampler
 
 
-def random_split(dataset, train_ratio=0.9, shuffle_dataset=True):
+def random_split_customized(dataset, train_ratio=0.9, shuffle_dataset=True):
     random_seed = 41
     # Creating data indices for training and validation splits:
     dataset_size = len(dataset)
@@ -190,7 +190,7 @@ def _main():
     #
     # train_dataset, test_dataset = random_split(convlstm_dataset, [train_size, test_size])
 
-    train_sampler, test_sampler = random_split(convlstm_dataset, train_ratio=0.9)
+    train_sampler, test_sampler = random_split_customized(convlstm_dataset, train_ratio=0.9)
 
     train_dataloader = DataLoader(convlstm_dataset, batch_size=batch_size, sampler=train_sampler,
                                   num_workers=4)
